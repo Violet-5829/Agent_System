@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+*.egg
+
+# Node
+node_modules/
+frontend/dist/
+
+# Env
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data
+backend/data/playground.db
+backend/data/playground.db-*
+backend/data/artifacts/*
+backend/data/.runtime/
+backend/data/skills/
+backend/backend/
+
+# CLAI
+.claude/
