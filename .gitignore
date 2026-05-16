@@ -32,5 +32,9 @@ backend/data/.runtime/
 backend/data/skills/
 backend/backend/
 
+# Docs
+问题修复.md
+MULTI_AGENT_PLAYGROUND_DEVELOPMENT_SPEC.md
+
 # CLAI
 .claude/
