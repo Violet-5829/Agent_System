@@ -106,8 +106,8 @@ def run_single_agent_chat(
         if on_event:
             on_event(ev)
 
-    push(_event("run_started", "运行开始", f"工作流: {workflow.name}"))
-    push(_event("node_entered", "进入单智能体节点", f"类型: {workflow.type}"))
+    push(_event("run_started", "运行开始", f"工作流: {workflow.name}", {"node_id": "start"}))
+    push(_event("node_entered", "进入单智能体节点", f"类型: {workflow.type}", {"node_id": "single_agent"}))
 
     # 获取绑定的 Agent
     agents = [a for a in store.list_agents() if a.id in workflow.specialist_agent_ids]
@@ -124,7 +124,7 @@ def run_single_agent_chat(
         )
 
     agent = agents[0]
-    push(_event("node_entered", f"Agent: {agent.name}", agent.description))
+    push(_event("node_entered", f"Agent: {agent.name}", agent.description, {"node_id": agent.id}))
 
     # 注入数据分析系统提示
     system_prompt = agent.system_prompt
@@ -182,7 +182,7 @@ def run_single_agent_chat(
     if workflow.finalizer_enabled:
         try:
             final_answer = llm_gateway.finalize(user_input, agent, answer)
-            push(_event("node_entered", "摘要生成", "生成最终摘要"))
+            push(_event("node_entered", "摘要生成", "生成最终摘要", {"node_id": "finalize"}))
             push(_event("message_generated", "最终摘要", final_answer[:500]))
         except Exception:
             pass
@@ -213,7 +213,7 @@ def run_single_agent_chat(
     # 构建 Graph
     graph = build_single_agent_graph(workflow, agents)
 
-    push(_event("run_finished", "运行完成", f"输出长度: {len(final_answer)} 字符"))
+    push(_event("run_finished", "运行完成", f"输出长度: {len(final_answer)} 字符", {"node_id": "end"}))
 
     return WorkflowRunResponse(
         workflow_id=workflow.id,

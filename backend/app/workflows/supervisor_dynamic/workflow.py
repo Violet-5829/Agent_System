@@ -106,7 +106,7 @@ def run_supervisor_dynamic(
         if on_event:
             on_event(ev)
 
-    push(_event("run_started", "运行开始", f"工作流: {workflow.name}"))
+    push(_event("run_started", "运行开始", f"工作流: {workflow.name}", {"node_id": "start"}))
 
     if len(workers) < 2:
         push(_event("run_finished", "运行结束", "错误: Agent 不足"))
@@ -121,7 +121,7 @@ def run_supervisor_dynamic(
     reports: list[str] = []
 
     # Step 1: 任务接收与分析
-    push(_event("node_entered", "监督者接收", "分析需求..."))
+    push(_event("node_entered", "监督者接收", "分析需求...", {"node_id": "supervisor_intake"}))
     worker_names = ", ".join(f"{w.name}({w.id})" for w in workers)
     intake_prompt = SUPERVISOR_INTAKE_PROMPT.format(user_input=user_input, workers=worker_names)
     try:
@@ -137,13 +137,13 @@ def run_supervisor_dynamic(
         push(_event("state_updated", f"周期 {cycle+1}/{max_cycles}", f"当前焦点: {focus_task[:100]}"))
 
         # 委派
-        push(_event("node_entered", "委派任务", "选择专家..."))
+        push(_event("node_entered", "委派任务", "选择专家...", {"node_id": "delegation_policy"}))
         selected_id, selected_name = llm_gateway.route(focus_task, workers)
         worker = next((w for w in workers if w.id == selected_id), workers[0])
         push(_event("route_selected", f"委派到: {worker.name}"))
 
         # 执行
-        push(_event("node_entered", f"执行: {worker.name}"))
+        push(_event("node_entered", f"执行: {worker.name}", "", {"node_id": worker.id}))
 
         def tool_trace_hook(meta: dict):
             stage = meta.get("stage", "")
@@ -161,7 +161,7 @@ def run_supervisor_dynamic(
         push(_event("message_generated", f"{worker.name} 回答", answer[:300]))
 
         # 审查
-        push(_event("node_entered", "监督者审查"))
+        push(_event("node_entered", "监督者审查", "", {"node_id": "supervisor_review"}))
         try:
             review_prompt = REVIEW_PROMPT.format(
                 reports="\n---\n".join(reports),
@@ -178,7 +178,7 @@ def run_supervisor_dynamic(
             break
 
     # Step 3: 最终报告
-    push(_event("node_entered", "生成最终报告", "综合所有分析结果..."))
+    push(_event("node_entered", "生成最终报告", "综合所有分析结果...", {"node_id": "finalize"}))
     try:
         final_prompt = FINALIZE_SUPERVISOR_PROMPT.format(user_input=user_input, reports="\n---\n".join(reports))
         final_answer = call_llm(final_prompt, temperature=0.3)
@@ -197,7 +197,7 @@ def run_supervisor_dynamic(
         queries_used=data_context.sql_log if data_context else None,
     )
 
-    push(_event("run_finished", "运行完成", f"输出长度: {len(final_answer)} 字符"))
+    push(_event("run_finished", "运行完成", f"输出长度: {len(final_answer)} 字符", {"node_id": "end"}))
 
     return WorkflowRunResponse(
         workflow_id=workflow.id, user_input=user_input,

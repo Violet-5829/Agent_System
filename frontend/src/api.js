@@ -1,91 +1,277 @@
-const BASE = '/api'
+function resolveApiBaseUrl() {
+  const runtimeConfig = globalThis?.__AGENT_PLAYGROUND_CONFIG__;
+  const injected = String(runtimeConfig?.apiBaseUrl || "").trim();
+  if (injected) return injected.replace(/\/+$/, "");
 
-async function request(url, options = {}) {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+  const envBase = String(import.meta.env.VITE_API_BASE_URL || "").trim();
+  if (envBase) return envBase.replace(/\/+$/, "");
+
+  return "";
+}
+
+function resolveApiUrl(path) {
+  const normalizedPath = String(path || "");
+  const baseUrl = resolveApiBaseUrl();
+  if (!baseUrl) return normalizedPath;
+  if (!normalizedPath.startsWith("/")) return `${baseUrl}/${normalizedPath}`;
+  return `${baseUrl}${normalizedPath}`;
+}
+
+async function request(path, options = {}) {
+  const response = await fetch(resolveApiUrl(path), {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
     ...options,
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || err.message || res.statusText)
-  }
-  return res.json()
-}
+  });
 
-export const api = {
-  // Health
-  health: () => request('/health'),
-
-  // Settings
-  getSettings: () => request('/settings'),
-  updateSettings: (data) => request('/settings', { method: 'PUT', body: JSON.stringify(data) }),
-
-  // Workflow Templates
-  getTemplates: () => request('/workflow-templates'),
-
-  // Skills
-  getSkills: () => request('/skills'),
-  createSkill: (data) => request('/skills', { method: 'POST', body: JSON.stringify(data) }),
-
-  // Agents
-  getAgents: () => request('/agents'),
-  createAgent: (data) => request('/agents', { method: 'POST', body: JSON.stringify(data) }),
-  updateAgent: (id, data) => request(`/agents/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteAgent: (id) => request(`/agents/${id}`, { method: 'DELETE' }),
-
-  // Workflows
-  getWorkflows: () => request('/workflows'),
-  createWorkflow: (data) => request('/workflows', { method: 'POST', body: JSON.stringify(data) }),
-  updateWorkflow: (id, data) => request(`/workflows/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteWorkflow: (id) => request(`/workflows/${id}`, { method: 'DELETE' }),
-  getWorkflowGraph: (id) => request(`/workflows/${id}/graph`),
-
-  // Runs
-  runWorkflow: (data) => request('/runs', { method: 'POST', body: JSON.stringify(data) }),
-
-  // Conversations
-  getConversations: (workflowId) => request(`/conversations?workflow_id=${workflowId || ''}`),
-  getConversation: (id) => request(`/conversations/${id}`),
-  deleteConversation: (id) => request(`/conversations/${id}`, { method: 'DELETE' }),
-
-  // SQL Data Sources
-  getSqlDataSources: () => request('/sql-data-sources'),
-  createSqlDataSource: (data) => request('/sql-data-sources', { method: 'POST', body: JSON.stringify(data) }),
-  deleteSqlDataSource: (id) => request(`/sql-data-sources/${id}`, { method: 'DELETE' }),
-  probeSqlDataSource: (id) => request(`/sql-data-sources/${id}/probe`, { method: 'POST' }),
-
-  // Excel Datasets
-  getExcelDatasets: () => request('/excel-datasets'),
-  createExcelDataset: (data) => request('/excel-datasets', { method: 'POST', body: JSON.stringify(data) }),
-  deleteExcelDataset: (id) => request(`/excel-datasets/${id}`, { method: 'DELETE' }),
-}
-
-export function streamRun(payload, onTrace, onFinal, onError) {
-  return fetch(`${BASE}/runs/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  }).then(async (res) => {
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-      let eventType = ''
-      for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          eventType = line.slice(7).trim()
-        } else if (line.startsWith('data: ')) {
-          const data = JSON.parse(line.slice(6))
-          if (eventType === 'trace') onTrace(data)
-          else if (eventType === 'final') onFinal(data)
-          else if (eventType === 'error') onError(data)
-        }
+  if (!response.ok) {
+    const errorText = await response.text();
+    let detail = errorText;
+    try {
+      const parsed = JSON.parse(errorText);
+      if (typeof parsed?.detail === "string" && parsed.detail.trim()) {
+        detail = parsed.detail.trim();
       }
+    } catch {
+      // noop: keep raw error text
     }
-  })
+    throw new Error(detail || `Request failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export function fetchTemplates() {
+  return request("/api/workflow-templates");
+}
+
+export function fetchAppSettings() {
+  return request("/api/settings");
+}
+
+export function updateAppSettings(payload) {
+  return request("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchSkills() {
+  return request("/api/skills");
+}
+
+export function createSkill(payload) {
+  return request("/api/skills", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function syncSkills(payload) {
+  return request("/api/skills/sync", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function installSkill(skillId) {
+  return request(`/api/skills/${skillId}/install`, {
+    method: "POST",
+  });
+}
+
+export function fetchAgents() {
+  return request("/api/agents");
+}
+
+export function createAgent(payload) {
+  return request("/api/agents", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateAgent(agentId, payload) {
+  return request(`/api/agents/${agentId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteAgent(agentId) {
+  return request(`/api/agents/${agentId}`, {
+    method: "DELETE",
+  });
+}
+
+export function fetchWorkflows() {
+  return request("/api/workflows");
+}
+
+export function createWorkflow(payload) {
+  return request("/api/workflows", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateWorkflow(workflowId, payload) {
+  return request(`/api/workflows/${workflowId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteWorkflow(workflowId) {
+  return request(`/api/workflows/${workflowId}`, {
+    method: "DELETE",
+  });
+}
+
+export function fetchWorkflowGraph(workflowId) {
+  return request(`/api/workflows/${workflowId}/graph`);
+}
+
+export function runWorkflow(payload) {
+  return request("/api/runs", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchConversations(workflowId) {
+  const query = workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : "";
+  return request(`/api/conversations${query}`);
+}
+
+export function createConversation(workflowId) {
+  return request("/api/conversations", {
+    method: "POST",
+    body: JSON.stringify({ workflow_id: workflowId }),
+  });
+}
+
+export function fetchConversation(conversationId) {
+  return request(`/api/conversations/${conversationId}`);
+}
+
+export function deleteConversation(conversationId) {
+  return request(`/api/conversations/${conversationId}`, {
+    method: "DELETE",
+  });
+}
+
+export function fetchSqlDataSources() {
+  return request("/api/sql-data-sources");
+}
+
+export function createSqlDataSource(payload) {
+  return request("/api/sql-data-sources", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteSqlDataSource(id) {
+  return request(`/api/sql-data-sources/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function probeSqlDataSource(id) {
+  return request(`/api/sql-data-sources/${id}/probe`, {
+    method: "POST",
+  });
+}
+
+export function fetchExcelDatasets() {
+  return request("/api/excel-datasets");
+}
+
+export function createExcelDataset(payload) {
+  return request("/api/excel-datasets", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteExcelDataset(id) {
+  return request(`/api/excel-datasets/${id}`, {
+    method: "DELETE",
+  });
+}
+
+function parseSseFrame(frame) {
+  const lines = frame.split(/\r?\n/);
+  let eventName = "message";
+  let dataText = "";
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataText += `${line.slice(5).trimStart()}\n`;
+    }
+  }
+  if (!dataText) return null;
+  const raw = dataText.trim();
+  try {
+    return { event: eventName, data: JSON.parse(raw) };
+  } catch {
+    return { event: eventName, data: raw };
+  }
+}
+
+export async function runWorkflowStream(
+  payload,
+  { onTrace, onFinal, onError, onEnd, signal } = {},
+) {
+  const response = await fetch(resolveApiUrl("/api/runs/stream"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Request failed: ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error("Streaming body is not available in this browser.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    buffer = buffer.replace(/\r\n/g, "\n");
+
+    let splitIndex = buffer.indexOf("\n\n");
+    while (splitIndex >= 0) {
+      const frame = buffer.slice(0, splitIndex);
+      buffer = buffer.slice(splitIndex + 2);
+
+      const parsed = parseSseFrame(frame);
+      if (parsed) {
+        if (parsed.event === "trace") onTrace?.(parsed.data);
+        if (parsed.event === "final") onFinal?.(parsed.data);
+        if (parsed.event === "error") onError?.(parsed.data);
+      }
+      splitIndex = buffer.indexOf("\n\n");
+    }
+  }
+
+  onEnd?.();
 }

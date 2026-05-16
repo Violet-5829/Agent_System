@@ -108,7 +108,7 @@ def run_router_specialists(
         if on_event:
             on_event(ev)
 
-    push(_event("run_started", "运行开始", f"工作流: {workflow.name}"))
+    push(_event("run_started", "运行开始", f"工作流: {workflow.name}", {"node_id": "start"}))
 
     agents = [a for a in store.list_agents() if a.id in workflow.specialist_agent_ids]
     if len(agents) < 2:
@@ -121,14 +121,14 @@ def run_router_specialists(
         )
 
     # 路由
-    push(_event("node_entered", "意图路由", "分析用户意图..."))
+    push(_event("node_entered", "意图路由", "分析用户意图...", {"node_id": "router"}))
     selected_id, selected_name = llm_gateway.route(user_input, agents)
-    push(_event("route_selected", f"选择专家: {selected_name}", f"Agent ID: {selected_id}"))
+    push(_event("route_selected", f"选择专家: {selected_name}", f"Agent ID: {selected_id}", {"node_id": selected_id}))
 
     specialist = next((a for a in agents if a.id == selected_id), agents[0])
 
     # 专家执行
-    push(_event("node_entered", f"专家执行: {specialist.name}", specialist.description))
+    push(_event("node_entered", f"专家执行: {specialist.name}", specialist.description, {"node_id": specialist.id}))
 
     def tool_trace_hook(meta: dict):
         stage = meta.get("stage", "")
@@ -170,7 +170,7 @@ def run_router_specialists(
         queries_used=data_context.sql_log if data_context else None,
     )
 
-    push(_event("run_finished", "运行完成", f"输出长度: {len(final_answer)} 字符"))
+    push(_event("run_finished", "运行完成", f"输出长度: {len(final_answer)} 字符", {"node_id": "end"}))
 
     return WorkflowRunResponse(
         workflow_id=workflow.id, user_input=user_input,

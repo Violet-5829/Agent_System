@@ -117,7 +117,7 @@ def run_planner_executor(
         if on_event:
             on_event(ev)
 
-    push(_event("run_started", "运行开始", f"工作流: {workflow.name}"))
+    push(_event("run_started", "运行开始", f"工作流: {workflow.name}", {"node_id": "start"}))
 
     if len(workers) < 2:
         push(_event("run_finished", "运行结束", "错误: Agent 不足"))
@@ -129,12 +129,12 @@ def run_planner_executor(
         )
 
     # Step 1: 规划
-    push(_event("node_entered", "任务规划", "分解用户需求..."))
+    push(_event("node_entered", "任务规划", "分解用户需求...", {"node_id": "planner_core"}))
     tasks, plan_source = llm_gateway.plan_tasks(user_input, max_tasks=5, force_multi=True, agents=workers)
     push(_event("state_updated", "规划结果", str(tasks)))
 
     # Step 2: 校验
-    push(_event("node_entered", "规划校验", "验证任务..."))
+    push(_event("node_entered", "规划校验", "验证任务...", {"node_id": "planner_validator"}))
     # 简单校验：检查是否有数据获取任务
     has_data_task = any("数据" in t or "加载" in t or "SQL" in t or "查询" in t for t in tasks)
     if not has_data_task and data_context:
@@ -161,7 +161,7 @@ def run_planner_executor(
         else:
             selected = workers[0]
 
-        push(_event("node_entered", f"分发到: {selected.name}", task))
+        push(_event("node_entered", f"分发到: {selected.name}", task, {"node_id": selected.id}))
 
         def tool_trace_hook(meta: dict):
             stage = meta.get("stage", "")
@@ -179,7 +179,7 @@ def run_planner_executor(
         push(_event("message_generated", f"{selected.name} 完成", answer[:300]))
 
     # Step 4: 合成
-    push(_event("node_entered", "结果合成", "汇总分析报告..."))
+    push(_event("node_entered", "结果合成", "汇总分析报告...", {"node_id": "synthesizer"}))
     combined = "\n\n---\n\n".join(task_reports)
     try:
         synth_prompt = SYNTH_PROMPT.format(user_input=user_input, task_reports=combined)
@@ -199,7 +199,7 @@ def run_planner_executor(
         queries_used=data_context.sql_log if data_context else None,
     )
 
-    push(_event("run_finished", "运行完成", f"输出长度: {len(final_answer)} 字符"))
+    push(_event("run_finished", "运行完成", f"输出长度: {len(final_answer)} 字符", {"node_id": "end"}))
 
     return WorkflowRunResponse(
         workflow_id=workflow.id, user_input=user_input,

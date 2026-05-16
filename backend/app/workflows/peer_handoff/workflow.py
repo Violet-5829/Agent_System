@@ -114,7 +114,7 @@ def run_peer_handoff(
         if on_event:
             on_event(ev)
 
-    push(_event("run_started", "运行开始", f"工作流: {workflow.name}"))
+    push(_event("run_started", "运行开始", f"工作流: {workflow.name}", {"node_id": "start"}))
 
     if len(workers) < 2:
         push(_event("run_finished", "运行结束", "错误: Agent 不足"))
@@ -137,7 +137,7 @@ def run_peer_handoff(
         ordered_workers = workers
 
     # Step 1: 第一个执行者
-    push(_event("node_entered", "首个执行者路由"))
+    push(_event("node_entered", "首个执行者路由", "", {"node_id": "first_owner_router"}))
     current_idx = 0
     reports: list[str] = []
     max_hops = len(ordered_workers)
@@ -146,7 +146,7 @@ def run_peer_handoff(
     while hop_count < max_hops:
         worker = ordered_workers[current_idx] if current_idx < len(ordered_workers) else ordered_workers[-1]
         push(_event("route_selected", f"交接 → {worker.name}", f"Hop {hop_count+1}/{max_hops}"))
-        push(_event("node_entered", f"执行: {worker.name}", f"流水线阶段: {worker.name}"))
+        push(_event("node_entered", f"执行: {worker.name}", f"流水线阶段: {worker.name}", {"node_id": f"peer_exec_{worker.id}"}))
 
         def tool_trace_hook(meta: dict):
             stage = meta.get("stage", "")
@@ -176,7 +176,7 @@ def run_peer_handoff(
             break
 
     # Step 2: 最终报告
-    push(_event("node_entered", "综合报告"))
+    push(_event("node_entered", "综合报告", "", {"node_id": "finalize"}))
     try:
         final_prompt = FINALIZE_HANDOFF_PROMPT.format(
             user_input=user_input,
@@ -198,7 +198,7 @@ def run_peer_handoff(
         queries_used=data_context.sql_log if data_context else None,
     )
 
-    push(_event("run_finished", "运行完成", f"输出长度: {len(final_answer)} 字符"))
+    push(_event("run_finished", "运行完成", f"输出长度: {len(final_answer)} 字符", {"node_id": "end"}))
 
     return WorkflowRunResponse(
         workflow_id=workflow.id, user_input=user_input,
